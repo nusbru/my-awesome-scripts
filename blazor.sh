@@ -17,7 +17,7 @@ mkdir src
 cd src
 
 # Cria o projeto Blazor Server
-dotnet new blazor -n $PROJECT_NAME
+dotnet new blazor -n $PROJECT_NAME --auth individual
 
 # Navega para o diretório do projeto
 cd $PROJECT_NAME
@@ -110,34 +110,16 @@ mkdir -p .devcontainer
 # Cria o devcontainer.json
 cat <<EOF > .devcontainer/devcontainer.json
 {
-    "name": "Blazor Server with PostgreSQL",
-    "dockerComposeFile": "../docker-compose.yml",
-    "service": "blazor",
-    "workspaceFolder": "/app",
+    "name": "Blazor Server",
+    "image": "mcr.microsoft.com/dotnet/sdk:9.0"
     "extensions": [
-      "akamud.vscode-theme-onedark",
-      "atommaterial.a-file-icon-vscode",
-      "eamodio.gitlens",
-      "esbenp.prettier-vscode",
-      "github.copilot",
-      "github.copilot-chat",
-      "github.vscode-pull-request-github",
-      "kreativ-software.csharpextensions",
-      "ms-azuretools.vscode-docker",
       "ms-dotnettools.csdevkit",
       "ms-dotnettools.csharp",
-      "ms-dotnettools.vscode-dotnet-runtime",
       "ms-dotnettools.vscodeintellicode-csharp",
       "ms-vscode-remote.remote-containers",
-      "ms-vscode-remote.remote-ssh",
-      "ms-vscode-remote.remote-ssh-edit",
-      "ms-vscode.remote-explorer",
+      "redhat.vscode-yaml",
     ],
-    "settings": {
-        "csharp.suppressHiddenDiagnostics": true
-    },
-    "postCreateCommand": "dotnet restore",
-    "remoteUser": "vscode"
+    "postCreateCommand": "dotnet restore"
 }
 EOF
 
