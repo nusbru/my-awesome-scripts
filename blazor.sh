@@ -111,7 +111,7 @@ mkdir -p .devcontainer
 cat <<EOF > .devcontainer/devcontainer.json
 {
     "name": "Blazor Server",
-    "image": "mcr.microsoft.com/dotnet/sdk:9.0"
+    "image": "mcr.microsoft.com/dotnet/sdk:9.0",
     "extensions": [
       "ms-dotnettools.csdevkit",
       "ms-dotnettools.csharp",
