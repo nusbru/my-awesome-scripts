@@ -95,18 +95,20 @@ cat <<EOF > $DEVCONTAINER_DIR/devcontainer.json
 {
     "name": "Minimal API",
     "image": "mcr.microsoft.com/dotnet/sdk:9.0",
-    "extensions": [
-      "ms-dotnettools.csdevkit",
-      "ms-dotnettools.csharp",
-      "ms-dotnettools.vscodeintellicode-csharp",
-      "ms-vscode-remote.remote-containers",
-      "redhat.vscode-yaml",
-    ],
+    "customizations": {
+        "vscode": {
+            extensions": [
+              "ms-dotnettools.csdevkit",
+              "ms-dotnettools.csharp",
+              "ms-dotnettools.vscodeintellicode-csharp",
+              "ms-vscode-remote.remote-containers",
+              "redhat.vscode-yaml",
+            ]
+        }
+    },            
     "postCreateCommand": "dotnet restore"
 }
 EOF
-
-
 
 # Cria Makefile
 echo "Criando Makefile..."
