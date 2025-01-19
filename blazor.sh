@@ -33,8 +33,8 @@ echo "Criando solução .NET..."
 dotnet new sln -o $BASE_DIR -n $PROJECT_NAME
 
 # Cria o projeto Minimal API
-echo "Criando projeto Minimal API..."
-dotnet new web -o $BLAZOR_PROJECT -n "$PROJECT_NAME.UI"
+echo "Criando projeto Blazor..."
+dotnet new blazor -o $BLAZOR_PROJECT -n "$PROJECT_NAME.UI" --auth individual
 
 # Adiciona os pacotes necessários
 dotnet add $BLAZOR_PROJECT package Microsoft.AspNetCore.Identity.EntityFrameworkCore
