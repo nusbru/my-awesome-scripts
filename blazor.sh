@@ -6,70 +6,87 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
+# Define variáveis
 PROJECT_NAME=$1
+BASE_DIR=$(pwd)/$PROJECT_NAME
+SRC_DIR=$BASE_DIR/src
+TEST_DIR=$BASE_DIR/test
+BLAZOR_PROJECT="$SRC_DIR/$PROJECT_NAME.UI"
+TEST_PROJECT="$TEST_DIR/$PROJECT_NAME.UI.Tests"
+DEVCONTAINER_DIR=$BASE_DIR/.devcontainer
 
-mkdir $PROJECT_NAME
-cd $PROJECT_NAME
+# Cria estrutura de diretórios
+echo "Criando diretórios..."
+mkdir -p $SRC_DIR
+mkdir -p $TEST_DIR
 
-dotnet new sln -n $PROJECT_NAME
+# Inicia repositório git no diretório base do projeto
+echo "Iniciando repositório git no diretório $BASE_DIR..."
+git init $BASE_DIR
 
-mkdir src
-cd src
+# Cria o arquivo de gitignore
+echo "Criando arquivo .gitignore..."
+wget https://www.toptal.com/developers/gitignore/api/csharp,visualstudio,visualstudiocode,openframeworks+visualstudio,dotnetcore,rider -O $BASE_DIR/.gitignore
 
-# Cria o projeto Blazor Server
-dotnet new blazor -n $PROJECT_NAME --auth individual
+# Cria a solução
+echo "Criando solução .NET..."
+dotnet new sln -o $BASE_DIR -n $PROJECT_NAME
 
-# Navega para o diretório do projeto
-cd $PROJECT_NAME
+# Cria o projeto Minimal API
+echo "Criando projeto Minimal API..."
+dotnet new web -o $BLAZOR_PROJECT -n "$PROJECT_NAME.UI"
 
 # Adiciona os pacotes necessários
-dotnet add package Microsoft.AspNetCore.Identity.EntityFrameworkCore
-dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL
-dotnet add package Microsoft.VisualStudio.Web.CodeGeneration.Design
+dotnet add $BLAZOR_PROJECT package Microsoft.AspNetCore.Identity.EntityFrameworkCore
+dotnet add $BLAZOR_PROJECT package Npgsql.EntityFrameworkCore.PostgreSQL
+dotnet add $BLAZOR_PROJECT package Microsoft.VisualStudio.Web.CodeGeneration.Design
 
-cd ..
-cd ..
-mkdir test
-cd test
-# Adiciona o projeto de teste
-dotnet new xunit -n ${PROJECT_NAME}.Tests
+# Adiciona o projeto API à solução
+echo "Adicionando projeto Blazor à solução..."
+dotnet sln $BASE_DIR/$PROJECT_NAME.sln add $BLAZOR_PROJECT
 
-# Navega para o diretório do projeto de teste
-cd ${PROJECT_NAME}.Tests
+# Cria o projeto de testes
+echo "Criando projeto de testes..."
+dotnet new xunit -o $TEST_PROJECT -n "$PROJECT_NAME.UI.Tests"
 
-# Adiciona os pacotes de teste
-dotnet add package FluentAssertions
-dotnet add package NSubstitute
+# Adiciona dependências ao projeto de testes
+echo "Adicionando dependências ao projeto de testes..."
+dotnet add $TEST_PROJECT package FluentAssertions
+dotnet add $TEST_PROJECT package NSubstitute
+dotnet add $TEST_PROJECT package coverlet.collector
 
-# Retorna para o diretório do projeto principal
-cd ..
-cd ..
+# Adiciona referência ao projeto API
+echo "Adicionando referência ao projeto Blazor no projeto de testes..."
+dotnet add $TEST_PROJECT reference $BLAZOR_PROJECT
 
-# Cria o Dockerfile
-cat <<EOF > Dockerfile
+# Adiciona o projeto de testes à solução
+echo "Adicionando projeto de testes à solução..."
+dotnet sln $BASE_DIR/$PROJECT_NAME.sln add $TEST_PROJECT
+
+# Adiciona o Dockerfile na raiz do projeto
+echo "Criando Dockerfile na raiz do projeto..."
+cat <<EOL > $BASE_DIR/Dockerfile
 # Etapa 1: Build
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build-env
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /app
 
-# Copia o arquivo csproj e restaura as dependências
-COPY *.csproj ./
-RUN dotnet restore
+# Copia a solução e restaura a
+s dependências
+COPY ./*.sln ./
+COPY ./src/$PROJECT_NAME.UI/*.csproj ./src/$PROJECT_NAME.UI/
+RUN dotnet restore ./src/$PROJECT_NAME.UI/$PROJECT_NAME.UI.csproj
 
-# Copia o restante da aplicação e constrói
-COPY . ./
-RUN dotnet publish -c Release -o out
+# Copia o restante do código e faz o build
+COPY ./src/$PROJECT_NAME.UI/. ./src/$PROJECT_NAME.UI/
+WORKDIR /app/src/$PROJECT_NAME.UI
+RUN dotnet publish -c Release -o /publish
 
-# Etapa 2: Criação da imagem final
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+# Etapa 2: Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
 WORKDIR /app
-COPY --from=build-env /app/out .
-
-# Expondo a porta que a aplicação irá rodar
-EXPOSE 80
-
-# Comando para rodar a aplicação
-ENTRYPOINT ["dotnet", "$PROJECT_NAME.dll"]
-EOF
+COPY --from=build /publish .
+ENTRYPOINT ["dotnet", "$PROJECT_NAME.UI.dll"]
+EOL
 
 lowercase_project_name="${PROJECT_NAME,,}"
 
@@ -104,27 +121,51 @@ networks:
     driver: bridge 
 EOF
 
-# Cria a pasta .devcontainer
-mkdir -p .devcontainer
+mkdir $DEVCONTAINER_DIR
 
 # Cria o devcontainer.json
-cat <<EOF > .devcontainer/devcontainer.json
+cat <<EOF > $DEVCONTAINER_DIR/devcontainer.json
 {
-    "name": "Blazor Server",
+    "name": "Minimal API",
     "image": "mcr.microsoft.com/dotnet/sdk:9.0",
-    "extensions": [
-      "ms-dotnettools.csdevkit",
-      "ms-dotnettools.csharp",
-      "ms-dotnettools.vscodeintellicode-csharp",
-      "ms-vscode-remote.remote-containers",
-      "redhat.vscode-yaml",
-    ],
+    "customizations": {
+        "vscode": {
+            extensions": [
+              "ms-dotnettools.csdevkit",
+              "ms-dotnettools.csharp",
+              "ms-dotnettools.vscodeintellicode-csharp",
+              "ms-vscode-remote.remote-containers",
+              "redhat.vscode-yaml",
+            ]
+        }
+    },            
     "postCreateCommand": "dotnet restore"
 }
 EOF
 
-dotnet sln add ./src/$PROJECT_NAME/$PROJECT_NAME.csproj
-dotnet sln add ./test/$PROJECT_NAME.Tests/$PROJECT_NAME.Tests.csproj
+# Cria Makefile
+echo "Criando Makefile..."
+cat <<EOL > "$BASE_DIR/Makefile"
+.PHONY: all build run test clean
 
-# Mensagem final
-echo "Projeto $PROJECT_NAME criado com sucesso!"
+all: build
+
+build:
+		dotnet build "$PROJECT_NAME.sln"
+
+run:
+		dotnet run --project "$BLAZOR_PROJECT"
+
+test:
+		dotnet test "$TEST_PROJECT"
+
+clean:
+		dotnet clean "$PROJECT_NAME.sln"
+EOL
+
+# Adiciona todos os arquivos ao repositório Git
+echo "Adicionando todos os arquivos ao repositório Git..."
+git -C $BASE_DIR add --all
+git -C $BASE_DIR commit -m "Initial"
+
+echo "Configuração concluída com sucesso!"
