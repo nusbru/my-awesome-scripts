@@ -20,6 +20,14 @@ echo "Criando diretórios..."
 mkdir -p $SRC_DIR
 mkdir -p $TEST_DIR
 
+# Inicia repositório git no diretório base do projeto
+echo "Iniciando repositório git no diretório $BASE_DIR..."
+git init $BASE_DIR
+
+# Cria o arquivo de gitignore
+echo "Criando arquivo .gitignore..."
+wget https://www.toptal.com/developers/gitignore/api/csharp,visualstudio,visualstudiocode,openframeworks+visualstudio,dotnetcore,rider -O $BASE_DIR/.gitignore
+
 # Cria a solução
 echo "Criando solução .NET..."
 dotnet new sln -o $BASE_DIR -n $PROJECT_NAME
@@ -62,7 +70,8 @@ cat <<EOL > $BASE_DIR/Dockerfile
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /app
 
-# Copia a solução e restaura as dependências
+# Copia a solução e restaura a
+s dependências
 COPY ./*.sln ./
 COPY ./src/$PROJECT_NAME.API/*.csproj ./src/$PROJECT_NAME.API/
 RUN dotnet restore ./src/$PROJECT_NAME.API/$PROJECT_NAME.API.csproj
@@ -96,5 +105,33 @@ cat <<EOF > $DEVCONTAINER_DIR/devcontainer.json
     "postCreateCommand": "dotnet restore"
 }
 EOF
+
+
+
+# Cria Makefile
+echo "Criando Makefile..."
+cat <<EOL > "$BASE_DIR/Makefile"
+.PHONY: all build run test clean
+
+all: build
+
+build:
+		dotnet build "$PROJECT_NAME.sln"
+
+run:
+		dotnet run --project "$API_PROJECT"
+
+test:
+		dotnet test "$TEST_PROJECT"
+
+clean:
+		dotnet clean "$PROJECT_NAME.sln"
+EOL
+
+
+# Adiciona todos os arquivos ao repositório Git
+echo "Adicionando todos os arquivos ao repositório Git..."
+git -C $BASE_DIR add --all
+git -C $BASE_DIR commit -m "Initial"
 
 echo "Configuração concluída com sucesso!"
