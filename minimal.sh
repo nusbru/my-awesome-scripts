@@ -2,12 +2,13 @@
 
 # Verifica se o nome do projeto foi fornecido
 if [ -z "$1" ]; then
-    echo "Uso: $0 <nome-do-projeto>"
+    echo "Informe o nome do projeto: $0 <nome-do-projeto>"
     exit 1
 fi
 
 # Define variáveis
 PROJECT_NAME=$1
+DATABASE_NAME=$2
 BASE_DIR=$(pwd)/$PROJECT_NAME
 SRC_DIR=$BASE_DIR/src
 TEST_DIR=$BASE_DIR/test
@@ -70,8 +71,7 @@ cat <<EOL > $BASE_DIR/Dockerfile
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /app
 
-# Copia a solução e restaura a
-s dependências
+# Copia a solução e restaura as dependências
 COPY ./*.sln ./
 COPY ./src/$PROJECT_NAME.API/*.csproj ./src/$PROJECT_NAME.API/
 RUN dotnet restore ./src/$PROJECT_NAME.API/$PROJECT_NAME.API.csproj
@@ -90,46 +90,126 @@ EOL
 
 mkdir $DEVCONTAINER_DIR
 
-# Cria o devcontainer.json
-cat <<EOF > $DEVCONTAINER_DIR/devcontainer.json
-{
-    "name": "Minimal API",
-    "image": "mcr.microsoft.com/dotnet/sdk:9.0",
-    "customizations": {
-        "vscode": {
-            extensions": [
-              "ms-dotnettools.csdevkit",
-              "ms-dotnettools.csharp",
-              "ms-dotnettools.vscodeintellicode-csharp",
-              "ms-vscode-remote.remote-containers",
-              "redhat.vscode-yaml",
-            ]
-        }
-    },            
-    "postCreateCommand": "dotnet restore"
-}
-EOF
-
 # Cria Makefile
 echo "Criando Makefile..."
 cat <<EOL > "$BASE_DIR/Makefile"
-.PHONY: all build run test clean
+# Tarefas
+.PHONY: all build run test clean add-migration update-database remove-migration list-migrations
 
 all: build
 
 build:
-		dotnet build "$PROJECT_NAME.sln"
+	dotnet build "$PROJECT_NAME.sln"
 
 run:
-		dotnet run --project "$API_PROJECT"
+	dotnet run --project "$API_PROJECT"
 
 test:
-		dotnet test "$TEST_PROJECT"
+	dotnet test --project "$TEST_PROJECT"
 
 clean:
-		dotnet clean "$PROJECT_NAME.sln"
+	dotnet clean "$PROJECT_NAME.sln"
+
+# Entity Framework Migrations
+add-migration:
+	dotnet ef migrations add $(name) --project "$API_PROJECT"
+
+update-database:
+	dotnet ef database update --project "$API_PROJECT"
+
+remove-migration:
+	dotnet ef migrations remove --project "$API_PROJECT"
+
+list-migrations:
+	dotnet ef migrations list --project "$API_PROJECT"
 EOL
 
+lowercase_project_name="${PROJECT_NAME,,}"
+
+if [ -n "$DATABASE_NAME" ]; then
+    echo "Criando postgres database service"
+    if [ "$DATABASE_NAME" == "postgres" ]; then
+        echo "Criando dockerfile com POSTGRES Database        "
+        # Cria o docker-compose.yml
+        cat <<EOF > $BASE_DIR/docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .  # Diretório atual onde está seu Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: \${POSTGRES_DB}
+      POSTGRES_USER: \${POSTGRES_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - \${INIT_SCRIPTS_PATH:-./init-scripts}:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - postgres_password
+    deploy:
+      resources:
+        limits:
+          cpus: \${PG_CPU_LIMIT:-1}
+          memory: \${PG_MEMORY_LIMIT:-1G}
+
+volumes:
+  postgres_data:
+    name: \${COMPOSE_PROJECT_NAME}_postgres_data
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+
+networks: 
+  "${lowercase_project_name}-network":
+    driver: bridge 
+EOF
+        cat <<EOF > $BASE_DIR/.env
+#PostgreSQL
+POSTGRES_DB=${PROJECT_NAME}db
+POSTGRES_USER=${PROJECT_NAME}_usr
+POSTGRES_INITDB_ARGS="--data-checksums --encoding=UTF8 --locale=pt_BR.UTF-8"
+POSTGRES_MAX_CONNECTIONS=100
+POSTGRES_SHARED_BUFFERS=128MB
+
+COMPOSE_PROJECT_NAME="${PROJECT_NAME}"
+TZ=America/Sao_Paulo
+
+# Configurações de recursos
+PG_CPU_LIMIT=1
+PG_MEMORY_LIMIT=1G
+
+# Paths para volumes e scripts (opcional)
+INIT_SCRIPTS_PATH=./init-scripts
+POSTGRES_DATA_PATH=./postgres-data
+
+# Outros parâmetros
+PGDATA=/var/lib/postgresql/data
+POSTGRES_MULTIPLE_DATABASES=prod,test,dev
+EOF
+    mkdir -p $BASE_DIR/.secrets
+    echo "$(openssl rand -base64 16)" > $BASE_DIR/.secrets/postgres_password.txt
+    chmod 600 $BASE_DIR/.secrets/postgres_password.txt
+    fi
+fi
 
 # Adiciona todos os arquivos ao repositório Git
 echo "Adicionando todos os arquivos ao repositório Git..."
