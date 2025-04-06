@@ -209,6 +209,74 @@ EOF
     echo "$(openssl rand -base64 16)" > $BASE_DIR/.secrets/postgres_password.txt
     chmod 600 $BASE_DIR/.secrets/postgres_password.txt
     fi
+
+    if [ "$DATABASE_NAME" == "mssql" ]; then
+        echo "Criando dockerfile com MSSQL Database"
+        # Cria o docker-compose.yml
+        cat <<EOF > $BASE_DIR/docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "80:80"
+    depends_on:
+      - db      
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+      restart: unless-stopped
+      environment:
+        ACCEPT_EULA: "Y"
+        MSSQL_SA_PASSWORD_FILE: /run/secrets/mssql_password
+        MSSQL_PID: ${MSSQL_PID:-Express}
+        MSSQL_DB: ${MSSQL_DB}
+      env_file:
+        - .env
+      ports:
+        - "1433:1433"
+      volumes:
+        - sqlserver_data:/var/opt/mssql/data
+        - ${MSSQL_INIT_SCRIPTS_PATH:-./mssql-init-scripts}:/docker-entrypoint-initdb.d
+      healthcheck:
+        test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $$(cat /run/secrets/mssql_password) -Q 'SELECT 1' || exit 1"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+      secrets:
+        - mssql_password
+      deploy:
+        resources:
+          limits:
+            cpus: ${MSSQL_CPU_LIMIT:-1}
+            memory: ${MSSQL_MEMORY_LIMIT:-2G}
+volumes:
+  mssql_data:
+    name: \${COMPOSE_PROJECT_NAME}_mssql_data
+
+secrets:
+  mssql_password:
+    file: ./secrets/mssql_password.txt
+
+networks: 
+  "${lowercase_project_name}-network":
+    driver: bridge         
+EOF
+        cat <<EOF > $BASE_DIR/.env
+#MSSQL
+MSSQL_DB=${PROJECT_NAME}db
+MSSQL_PID=Express
+MSSQL_CPU_LIMIT=1
+MSSQL_MEMORY_LIMIT=2G
+MSSQL_INIT_SCRIPTS_PATH=./mssql-init-scripts
+PG_CPU_LIMIT=1
+PG_MEMORY_LIMIT=1G
+EOF
+    mkdir -p $BASE_DIR/.secrets
+    echo "$(openssl rand -base64 16)" > $BASE_DIR/.secrets/mssql_password.txt
+    chmod 600 $BASE_DIR/.secrets/mssql_password.txt
+    fi
 fi
 
 # Adiciona todos os arquivos ao repositório Git
