@@ -29,6 +29,10 @@ git init $BASE_DIR
 echo "Criando arquivo .gitignore..."
 wget https://www.toptal.com/developers/gitignore/api/csharp,visualstudio,visualstudiocode,openframeworks+visualstudio,dotnetcore,rider -O $BASE_DIR/.gitignore
 
+echo ".secrets" >> $BASE_DIR/.gitignore
+echo ".devcontainer" >> $BASE_DIR/.gitignore
+echo ".env" >> $BASE_DIR/.gitignore
+
 # Cria a solução
 echo "Criando solução .NET..."
 dotnet new sln -o $BASE_DIR -n $PROJECT_NAME
@@ -132,7 +136,6 @@ if [ -n "$DATABASE_NAME" ]; then
         echo "Criando dockerfile com POSTGRES Database        "
         # Cria o docker-compose.yml
         cat <<EOF > $BASE_DIR/docker-compose.yml
-version: '3.8'
 
 services:
   app:
@@ -150,6 +153,7 @@ services:
       POSTGRES_DB: \${POSTGRES_DB}
       POSTGRES_USER: \${POSTGRES_USER}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: \${POSTGRES_INITDB_ARGS}
     env_file:
       - .env
     ports:
@@ -184,13 +188,13 @@ networks:
 EOF
         cat <<EOF > $BASE_DIR/.env
 #PostgreSQL
-POSTGRES_DB=${PROJECT_NAME}db
-POSTGRES_USER=${PROJECT_NAME}_usr
-POSTGRES_INITDB_ARGS="--data-checksums --encoding=UTF8 --locale=pt_BR.UTF-8"
+POSTGRES_DB=${lowercase_project_name}db
+POSTGRES_USER=${lowercase_project_name}_usr
+POSTGRES_INITDB_ARGS="--data-checksums --encoding=UTF8 --locale=C.UTF-8"
 POSTGRES_MAX_CONNECTIONS=100
 POSTGRES_SHARED_BUFFERS=128MB
 
-COMPOSE_PROJECT_NAME="${PROJECT_NAME}"
+COMPOSE_PROJECT_NAME="${lowercase_project_name}"
 TZ=America/Sao_Paulo
 
 # Configurações de recursos
@@ -214,7 +218,6 @@ EOF
         echo "Criando dockerfile com MSSQL Database"
         # Cria o docker-compose.yml
         cat <<EOF > $BASE_DIR/docker-compose.yml
-version: '3.8'
 
 services:
   app:
@@ -226,38 +229,39 @@ services:
       - db      
   db:
     image: mcr.microsoft.com/mssql/server:2022-latest
-      restart: unless-stopped
-      environment:
-        ACCEPT_EULA: "Y"
-        MSSQL_SA_PASSWORD_FILE: /run/secrets/mssql_password
-        MSSQL_PID: ${MSSQL_PID:-Express}
-        MSSQL_DB: ${MSSQL_DB}
-      env_file:
-        - .env
-      ports:
-        - "1433:1433"
-      volumes:
-        - sqlserver_data:/var/opt/mssql/data
-        - ${MSSQL_INIT_SCRIPTS_PATH:-./mssql-init-scripts}:/docker-entrypoint-initdb.d
-      healthcheck:
-        test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $$(cat /run/secrets/mssql_password) -Q 'SELECT 1' || exit 1"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
-      secrets:
-        - mssql_password
-      deploy:
-        resources:
-          limits:
-            cpus: ${MSSQL_CPU_LIMIT:-1}
-            memory: ${MSSQL_MEMORY_LIMIT:-2G}
+    restart: unless-stopped
+    user: root
+    command: >
+      bash -c "chown -R 10001 /var/opt/mssql && /opt/mssql/bin/sqlservr"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD_FILE: /run/secrets/mssql_password
+    env_file:
+      - .env
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql/data
+      - ${MSSQL_INIT_SCRIPTS_PATH:-./mssql-init-scripts}:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \$(cat /run/secrets/mssql_password) -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - mssql_password
+    deploy:
+      resources:
+        limits:
+          cpus: ${MSSQL_CPU_LIMIT:-1}
+          memory: ${MSSQL_MEMORY_LIMIT:-2G}
 volumes:
   mssql_data:
     name: \${COMPOSE_PROJECT_NAME}_mssql_data
 
 secrets:
   mssql_password:
-    file: ./secrets/mssql_password.txt
+    file: ./.secrets/mssql_password.txt
 
 networks: 
   "${lowercase_project_name}-network":
@@ -265,7 +269,7 @@ networks:
 EOF
         cat <<EOF > $BASE_DIR/.env
 #MSSQL
-MSSQL_DB=${PROJECT_NAME}db
+MSSQL_DB=${lowercase_project_name}db
 MSSQL_PID=Express
 MSSQL_CPU_LIMIT=1
 MSSQL_MEMORY_LIMIT=2G
